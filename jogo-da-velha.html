@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jogo da Velha - IA Inteligente</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #app {
+            width: 100%;
+        }
+
+        .game-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .game-card {
+            background: white;
+            border-radius: 20px;
+            padding: 2rem;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 500px;
+            width: 100%;
+        }
+
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 0.5rem;
+            font-size: 2.5rem;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 2rem;
+            font-size: 1rem;
+        }
+
+        .status {
+            min-height: 60px;
+            margin-bottom: 2rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .winner-message {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #2980b9;
+            animation: bounce 0.5s ease;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+
+        .turn-indicator {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            font-size: 1.1rem;
+            color: #666;
+        }
+
+        .turn-indicator span {
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            transition: all 0.3s;
+        }
+
+        .turn-indicator span.active {
+            background: linear-gradient(135deg, #3498db 0%, #2c3e50 100%);
+            color: white;
+            font-weight: bold;
+            transform: scale(1.1);
+        }
+
+        .vs {
+            font-weight: bold;
+            color: #999;
+        }
+
+        .board {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            margin-bottom: 2rem;
+            aspect-ratio: 1;
+        }
+
+        .cell {
+            aspect-ratio: 1;
+            background: linear-gradient(135deg, #ecf0f1 0%, #bdc3c7 100%);
+            border: 3px solid #3498db;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .cell:hover:not(.disabled) {
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(52, 152, 219, 0.4);
+        }
+
+        .cell.disabled {
+            cursor: not-allowed;
+        }
+
+        .cell.winning-X {
+            background: linear-gradient(135deg, #5dade2 0%, #3498db 100%);
+            animation: pulse 0.6s ease-in-out infinite;
+        }
+
+        .cell.winning-O {
+            background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+            animation: pulse 0.6s ease-in-out infinite;
+        }
+
+        .cell-content {
+            animation: popIn 0.3s ease;
+        }
+
+        .cell-content.X {
+            color: #e74c3c;
+        }
+
+        .cell-content.O {
+            color: #3498db;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+
+        .stats {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 1.5rem;
+            padding: 1rem;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            border-radius: 12px;
+        }
+
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            color: #666;
+            font-weight: 600;
+        }
+
+        .stat-value {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #2980b9;
+        }
+
+        .buttons {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .reset-btn, .reset-stats-btn {
+            flex: 1;
+            padding: 14px 24px;
+            font-size: 1rem;
+            font-weight: 600;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .reset-btn {
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+            color: white;
+        }
+
+        .reset-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(52, 152, 219, 0.5);
+        }
+
+        .reset-stats-btn {
+            background: linear-gradient(135deg, #5dade2 0%, #3498db 100%);
+            color: white;
+        }
+
+        .reset-stats-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(93, 173, 226, 0.5);
+        }
+
+        .difficulty {
+            display: flex;
+            flex-direction: column;
+            gap: 0.8rem;
+        }
+
+        .difficulty label {
+            font-size: 0.9rem;
+            color: #666;
+            font-weight: 600;
+            text-align: center;
+        }
+
+        .difficulty-buttons {
+            display: flex;
+            gap: 0.5rem;
+            justify-content: center;
+        }
+
+        .difficulty-btn {
+            flex: 1;
+            padding: 10px 16px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            border: 2px solid #3498db;
+            border-radius: 8px;
+            cursor: pointer;
+            background: white;
+            color: #3498db;
+            transition: all 0.3s;
+        }
+
+        .difficulty-btn:hover {
+            background: #ebf5fb;
+            transform: translateY(-2px);
+        }
+
+        .difficulty-btn.active {
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+            color: white;
+            border-color: #2980b9;
+            box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
+        }
+
+        @media (max-width: 480px) {
+            .game-card {
+                padding: 1.5rem;
+            }
+
+            h1 {
+                font-size: 2rem;
+            }
+
+            .cell {
+                font-size: 2rem;
+            }
+
+            .buttons {
+                flex-direction: column;
+            }
+
+            .difficulty-buttons {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="game-container">
+            <div class="game-card">
+                <h1>🎮 Jogo da Velha</h1>
+                <p class="subtitle">Enfrente a IA Imbatível!</p>
+
+                <div class="status">
+                    <div v-if="winner" class="winner-message">
+                        <span v-if="winner === 'draw'">🤝 Empate!</span>
+                        <span v-else-if="winner === 'X'">🎉 Você Venceu!</span>
+                        <span v-else>🤖 IA Venceu!</span>
+                    </div>
+                    <div v-else class="turn-indicator">
+                        <span :class="{ active: currentPlayer === 'X' }">
+                            👤 Você (X)
+                        </span>
+                        <span class="vs">VS</span>
+                        <span :class="{ active: currentPlayer === 'O' }">
+                            🤖 IA (O)
+                        </span>
+                    </div>
+                </div>
+
+                <div class="board">
+                    <div
+                        v-for="(cell, index) in board"
+                        :key="index"
+                        class="cell"
+                        :class="{
+                            disabled: cell || winner || currentPlayer === 'O',
+                            winning: winningLine && winningLine.includes(index)
+                        }"
+                        @click="handleClick(index)"
+                    >
+                        <span v-if="cell" class="cell-content" :class="cell">
+                            'winning-X': winner === 'X' && winningLine && winningLine.includes(index),
+                            'winning-O': winner === 'O' && winningLine && winningLine.includes(index)
+                    </div>
+                </div>
+
+                <div class="stats">
+                    <div class="stat-item">
+                        <span class="stat-label">Vitórias</span>
+                        <span class="stat-value">{{ stats.player }}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Empates</span>
+                        <span class="stat-value">{{ stats.draws }}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Derrotas</span>
+                        <span class="stat-value">{{ stats.ai }}</span>
+                    </div>
+                </div>
+
+                <div class="buttons">
+                    <button @click="resetGame" class="reset-btn">
+                        🔄 Novo Jogo
+                    </button>
+                    <button @click="resetStats" class="reset-stats-btn">
+                        📊 Resetar Estatísticas
+                    </button>
+                </div>
+
+                <div class="difficulty">
+                    <label>Dificuldade da IA:</label>
+                    <div class="difficulty-buttons">
+                        <button
+                            @click="setDifficulty('medium')"
+                            :class="['difficulty-btn', { active: difficulty === 'medium' }]">
+                            😊 Médio
+                        </button>
+                        <button
+                            @click="setDifficulty('hard')"
+                            :class="['difficulty-btn', { active: difficulty === 'hard' }]">
+                            😤 Difícil
+                        </button>
+                        <button
+                            @click="setDifficulty('impossible')"
+                            :class="['difficulty-btn', { active: difficulty === 'impossible' }]">
+                            🔥 Impossível
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    board: Array(9).fill(null),
+                    currentPlayer: 'X',
+                    winner: null,
+                    winningLine: null,
+                    difficulty: 'impossible',
+                    stats: {
+                        player: 0,
+                        ai: 0,
+                        draws: 0
+                    }
+                }
+            },
+            computed: {
+                winningCombinations() {
+                    return [
+                        [0, 1, 2], [3, 4, 5], [6, 7, 8], // linhas
+                        [0, 3, 6], [1, 4, 7], [2, 5, 8], // colunas
+                        [0, 4, 8], [2, 4, 6]             // diagonais
+                    ];
+                }
+            },
+            methods: {
+                checkWinner(currentBoard) {
+                    for (const combo of this.winningCombinations) {
+                        const [a, b, c] = combo;
+                        if (currentBoard[a] && currentBoard[a] === currentBoard[b] && currentBoard[a] === currentBoard[c]) {
+                            this.winningLine = combo;
+                            return currentBoard[a];
+                        }
+                    }
+                    return currentBoard.every(cell => cell) ? 'draw' : null;
+                },
+
+                minimax(currentBoard, depth, isMaximizing, alpha = -Infinity, beta = Infinity) {
+                    const result = this.checkWinner(currentBoard);
+
+                    if (result === 'O') return 10 - depth;
+                    if (result === 'X') return depth - 10;
+                    if (result === 'draw') return 0;
+
+                    if (isMaximizing) {
+                        let bestScore = -Infinity;
+                        for (let i = 0; i < 9; i++) {
+                            if (!currentBoard[i]) {
+                                currentBoard[i] = 'O';
+                                const score = this.minimax(currentBoard, depth + 1, false, alpha, beta);
+                                currentBoard[i] = null;
+                                bestScore = Math.max(score, bestScore);
+                                alpha = Math.max(alpha, score);
+                                if (beta <= alpha) break;
+                            }
+                        }
+                        return bestScore;
+                    } else {
+                        let bestScore = Infinity;
+                        for (let i = 0; i < 9; i++) {
+                            if (!currentBoard[i]) {
+                                currentBoard[i] = 'X';
+                                const score = this.minimax(currentBoard, depth + 1, true, alpha, beta);
+                                currentBoard[i] = null;
+                                bestScore = Math.min(score, bestScore);
+                                beta = Math.min(beta, score);
+                                if (beta <= alpha) break;
+                            }
+                        }
+                        return bestScore;
+                    }
+                },
+
+                getBestMove() {
+                    const emptyIndices = this.board.map((cell, i) => cell === null ? i : null).filter(i => i !== null);
+
+                    if (this.difficulty === 'impossible') {
+                        let bestScore = -Infinity;
+                        let bestMove = null;
+
+                        for (let i of emptyIndices) {
+                            this.board[i] = 'O';
+                            const score = this.minimax([...this.board], 0, false);
+                            this.board[i] = null;
+
+                            if (score > bestScore) {
+                                bestScore = score;
+                                bestMove = i;
+                            }
+                        }
+                        return bestMove;
+                    }
+
+                    if (this.difficulty === 'hard') {
+                        if (Math.random() < 0.8) {
+                            let bestScore = -Infinity;
+                            let bestMove = null;
+
+                            for (let i of emptyIndices) {
+                                this.board[i] = 'O';
+                                const score = this.minimax([...this.board], 0, false);
+                                this.board[i] = null;
+
+                                if (score > bestScore) {
+                                    bestScore = score;
+                                    bestMove = i;
+                                }
+                            }
+                            return bestMove;
+                        }
+                        return emptyIndices[Math.floor(Math.random() * emptyIndices.length)];
+                    }
+
+                    if (this.difficulty === 'medium') {
+                        for (let i of emptyIndices) {
+                            this.board[i] = 'O';
+                            if (this.checkWinner(this.board) === 'O') {
+                                this.board[i] = null;
+                                return i;
+                            }
+                            this.board[i] = null;
+                        }
+
+                        if (Math.random() < 0.7) {
+                            for (let i of emptyIndices) {
+                                this.board[i] = 'X';
+                                if (this.checkWinner(this.board) === 'X') {
+                                    this.board[i] = null;
+                                    return i;
+                                }
+                                this.board[i] = null;
+                            }
+                        }
+
+                        if (this.board[4] === null && Math.random() < 0.5) return 4;
+                        return emptyIndices[Math.floor(Math.random() * emptyIndices.length)];
+                    }
+                },
+
+                handleClick(index) {
+                    if (this.board[index] || this.winner || this.currentPlayer === 'O') return;
+
+                    this.board[index] = 'X';
+                    const result = this.checkWinner(this.board);
+
+                    if (result) {
+                        this.winner = result;
+                        this.updateStats(result);
+                        return;
+                    }
+
+                    this.currentPlayer = 'O';
+
+                    setTimeout(() => {
+                        const aiMove = this.getBestMove();
+                        if (aiMove !== null) {
+                            this.board[aiMove] = 'O';
+                            const aiResult = this.checkWinner(this.board);
+                            if (aiResult) {
+                                this.winner = aiResult;
+                                this.updateStats(aiResult);
+                            } else {
+                                this.currentPlayer = 'X';
+                            }
+                        }
+                    }, 500);
+                },
+
+                updateStats(result) {
+                    if (result === 'X') this.stats.player++;
+                    else if (result === 'O') this.stats.ai++;
+                    else if (result === 'draw') this.stats.draws++;
+                },
+
+                resetGame() {
+                    this.board = Array(9).fill(null);
+                    this.currentPlayer = 'X';
+                    this.winner = null;
+                    this.winningLine = null;
+                },
+
+                resetStats() {
+                    this.stats.player = 0;
+                    this.stats.ai = 0;
+                    this.stats.draws = 0;
+                    this.resetGame();
+                },
+
+                setDifficulty(level) {
+                    this.difficulty = level;
+                    this.resetGame();
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
+
