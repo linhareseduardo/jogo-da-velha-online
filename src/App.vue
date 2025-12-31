@@ -456,21 +456,69 @@ function connectToServer() {
     ? window.location.origin  // Em produção, usa a mesma URL do site
     : 'http://localhost:3001' // Em desenvolvimento, usa localhost:3001
 
-  socket.value = io(serverUrl)
+  console.log('Conectando ao servidor:', serverUrl)
 
-  socket.value.on('connect', () => {
-    console.log('Conectado ao servidor')
+  socket.value = io(serverUrl, {
+    transports: ['polling', 'websocket'],
+    reconnection: true,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 5000,
+    reconnectionAttempts: 10,
+    timeout: 20000,
+    autoConnect: true,
+    withCredentials: true
   })
 
-  socket.value.on('match-found', ({ roomId: rid, player }) => {
-    roomId.value = rid
-    mySymbol.value = player
-    onlineState.value = 'playing'
+  socket.value.on('connect', () => {
+    console.log('✅ Conectado ao servidor:', socket.value.id)
+  })
+
+  socket.value.on('connection-confirmed', ({ socketId }) => {
+    console.log('✅ Conexão confirmada:', socketId)
+  })
+
+  socket.value.on('connect_error', (error) => {
+    console.error('❌ Erro de conexão:', error.message)
+  })
+
+  socket.value.on('disconnect', (reason) => {
+    console.log('⚠️ Desconectado:', reason)
+    if (reason === 'io server disconnect') {
+      // Servidor desconectou, tentar reconectar
+      socket.value.connect()
+    }
+  })
+
+  socket.value.on('reconnect', (attemptNumber) => {
+    console.log(`✅ Reconectado após ${attemptNumber} tentativas`)
+  })
+
+  socket.value.on('reconnect_attempt', (attemptNumber) => {
+    console.log(`🔄 Tentativa de reconexão: ${attemptNumber}`)
+  })
+
+  socket.value.on('reconnect_error', (error) => {
+    console.error('❌ Erro ao reconectar:', error.message)
+  })
+
+  socket.value.on('reconnect_failed', () => {
+    console.error('❌ Falha ao reconectar')
+    onlineState.value = 'disconnected'
+  })
+
+  socket.value.on('match-found', ({ success, roomId: rid, player }) => {
+    if (success) {
+      roomId.value = rid
+      mySymbol.value = player
+      onlineState.value = 'playing'
+      console.log(`✅ Partida encontrada: ${rid} como ${player}`)
+    }
   })
 
   socket.value.on('game-start', () => {
     onlineState.value = 'playing'
     resetGame()
+    console.log('✅ Jogo iniciado')
   })
 
   socket.value.on('board-update', ({ board: newBoard, currentPlayer: newPlayer }) => {
@@ -508,12 +556,19 @@ function disconnectFromServer() {
 
 function findRandomMatch() {
   onlineState.value = 'searching'
+  console.log('🔍 Procurando partida...')
   socket.value.emit('find-match', (response) => {
-    if (response.waiting) {
-      // Aguardando adversário
-    } else if (response.roomId) {
-      roomId.value = response.roomId
-      mySymbol.value = response.player
+    if (response.success) {
+      if (response.waiting) {
+        console.log('⏳ Aguardando adversário...')
+      } else if (response.roomId) {
+        roomId.value = response.roomId
+        mySymbol.value = response.player
+        console.log(`✅ Partida encontrada: ${response.roomId} como ${response.player}`)
+      }
+    } else {
+      console.error('❌ Erro ao buscar partida')
+      onlineState.value = 'menu'
     }
   })
 }
@@ -525,9 +580,15 @@ function cancelSearch() {
 
 function createRoom() {
   socket.value.emit('create-room', (response) => {
-    roomId.value = response.roomId
-    mySymbol.value = response.player
-    onlineState.value = 'waiting-opponent'
+    if (response.success) {
+      roomId.value = response.roomId
+      mySymbol.value = response.player
+      onlineState.value = 'waiting-opponent'
+      console.log(`✅ Sala criada: ${response.roomId}`)
+    } else {
+      alert('Erro ao criar sala. Tente novamente.')
+      console.error('❌ Erro ao criar sala')
+    }
   })
 }
 
@@ -535,12 +596,14 @@ function joinRoom() {
   if (!roomIdInput.value) return
 
   socket.value.emit('join-room', roomIdInput.value, (response) => {
-    if (response.error) {
+    if (response.success) {
+      roomId.value = response.roomId
+      mySymbol.value = response.player
+      console.log(`✅ Entrou na sala: ${response.roomId} como ${response.player}`)
+    } else {
       alert(response.error)
-      return
+      console.error('❌ Erro ao entrar na sala:', response.error)
     }
-    roomId.value = response.roomId
-    mySymbol.value = response.player
   })
 }
 

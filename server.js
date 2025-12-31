@@ -10,16 +10,37 @@ const httpServer = createServer(app)
 const io = new Server(httpServer, {
   cors: {
     origin: "*",
-    methods: ["GET", "POST"]
-  }
+    methods: ["GET", "POST"],
+    credentials: true
+  },
+  transports: ['polling', 'websocket'],
+  allowEIO3: true,
+  pingTimeout: 60000,
+  pingInterval: 25000,
+  connectTimeout: 45000,
+  maxHttpBufferSize: 1e6
 })
 
 // Armazena as salas ativas
 const rooms = new Map()
 const waitingPlayers = []
 
+// Limpeza periódica de salas vazias (a cada 5 minutos)
+setInterval(() => {
+  const now = Date.now()
+  for (const [roomId, room] of rooms.entries()) {
+    if (!room.lastActivity || now - room.lastActivity > 300000) { // 5 minutos
+      rooms.delete(roomId)
+      console.log(`Sala inativa removida: ${roomId}`)
+    }
+  }
+}, 300000)
+
 io.on('connection', (socket) => {
-  console.log('Jogador conectado:', socket.id)
+  console.log('✅ Jogador conectado:', socket.id)
+  
+  // Envia confirmação de conexão
+  socket.emit('connection-confirmed', { socketId: socket.id })
 
   // Criar uma sala privada
   socket.on('create-room', (callback) => {
@@ -29,12 +50,13 @@ io.on('connection', (socket) => {
       board: Array(9).fill(null),
       currentPlayer: 'X',
       playerX: socket.id,
-      playerO: null
+      playerO: null,
+      lastActivity: Date.now()
     })
     socket.join(roomId)
     socket.roomId = roomId
-    console.log(`Sala criada: ${roomId}`)
-    callback({ roomId, player: 'X' })
+    console.log(`✅ Sala criada: ${roomId}`)
+    callback({ success: true, roomId, player: 'X' })
   })
 
   // Entrar em uma sala privada
@@ -42,21 +64,24 @@ io.on('connection', (socket) => {
     const room = rooms.get(roomId)
 
     if (!room) {
-      callback({ error: 'Sala não encontrada!' })
+      console.log(`❌ Sala não encontrada: ${roomId}`)
+      callback({ success: false, error: 'Sala não encontrada!' })
       return
     }
 
     if (room.players.length >= 2) {
-      callback({ error: 'Sala cheia!' })
+      console.log(`❌ Sala cheia: ${roomId}`)
+      callback({ success: false, error: 'Sala cheia!' })
       return
     }
 
     room.players.push(socket.id)
     room.playerO = socket.id
+    room.lastActivity = Date.now()
     socket.join(roomId)
     socket.roomId = roomId
 
-    console.log(`Jogador entrou na sala: ${roomId}`)
+    console.log(`✅ Jogador entrou na sala: ${roomId}`)
 
     // Notifica ambos os jogadores que o jogo pode começar
     io.to(roomId).emit('game-start', {
@@ -64,11 +89,16 @@ io.on('connection', (socket) => {
       playerO: room.playerO
     })
 
-    callback({ roomId, player: 'O' })
+    callback({ success: true, roomId, player: 'O' })
   })
 
   // Buscar partida aleatória
   socket.on('find-match', (callback) => {
+    // Limpa jogadores desconectados da fila
+    const validPlayers = waitingPlayers.filter(p => p.connected)
+    waitingPlayers.length = 0
+    waitingPlayers.push(...validPlayers)
+
     // Verifica se há alguém esperando
     if (waitingPlayers.length > 0) {
       const opponent = waitingPlayers.shift()
@@ -79,7 +109,8 @@ io.on('connection', (socket) => {
         board: Array(9).fill(null),
         currentPlayer: 'X',
         playerX: opponent.id,
-        playerO: socket.id
+        playerO: socket.id,
+        lastActivity: Date.now()
       })
 
       socket.join(roomId)
@@ -87,10 +118,11 @@ io.on('connection', (socket) => {
       socket.roomId = roomId
       opponent.roomId = roomId
 
-      console.log(`Partida encontrada: ${roomId}`)
+      console.log(`✅ Partida encontrada: ${roomId}`)
 
       // Notifica o primeiro jogador
       opponent.emit('match-found', {
+        success: true,
         roomId,
         player: 'X',
         opponent: socket.id
@@ -98,6 +130,7 @@ io.on('connection', (socket) => {
 
       // Notifica o segundo jogador
       callback({
+        success: true,
         roomId,
         player: 'O',
         opponent: opponent.id
@@ -112,8 +145,8 @@ io.on('connection', (socket) => {
       // Adiciona à fila de espera
       waitingPlayers.push(socket)
       socket.waiting = true
-      console.log('Jogador adicionado à fila de espera')
-      callback({ waiting: true })
+      console.log('🔍 Jogador adicionado à fila de espera')
+      callback({ success: true, waiting: true })
     }
   })
 
@@ -131,16 +164,25 @@ io.on('connection', (socket) => {
   socket.on('make-move', ({ roomId, index, player }) => {
     const room = rooms.get(roomId)
 
-    if (!room) return
+    if (!room) {
+      console.log(`❌ Jogada em sala inexistente: ${roomId}`)
+      return
+    }
 
     // Verifica se é o turno do jogador
     const isPlayerTurn = (room.currentPlayer === 'X' && socket.id === room.playerX) ||
                          (room.currentPlayer === 'O' && socket.id === room.playerO)
 
-    if (!isPlayerTurn || room.board[index]) return
+    if (!isPlayerTurn || room.board[index]) {
+      console.log(`❌ Jogada inválida: ${socket.id} em ${roomId}`)
+      return
+    }
 
     room.board[index] = player
     room.currentPlayer = room.currentPlayer === 'X' ? 'O' : 'X'
+    room.lastActivity = Date.now()
+
+    console.log(`✅ Jogada: ${player} na posição ${index} - Sala ${roomId}`)
 
     // Envia a atualização para ambos os jogadores
     io.to(roomId).emit('board-update', {
@@ -165,7 +207,7 @@ io.on('connection', (socket) => {
 
   // Desconexão
   socket.on('disconnect', () => {
-    console.log('Jogador desconectado:', socket.id)
+    console.log('❌ Jogador desconectado:', socket.id)
 
     // Remove da fila de espera
     const waitingIndex = waitingPlayers.findIndex(p => p.id === socket.id)
